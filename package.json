@@ -1,0 +1,15 @@
+{
+  "name": "weeklyhome",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PWA per la spesa settimanale in famiglia a partire dal piano nutrizionale",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test:domain": "npm --workspace @weeklyhome/domain run test",
+    "build:domain": "npm --workspace @weeklyhome/domain run build"
+  },
+  "license": "UNLICENSED"
+}

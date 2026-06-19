@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+.git
+.github
+.vercel
+.eq-tipo
+**/.env
+**/.env.*
+*.log
+docs

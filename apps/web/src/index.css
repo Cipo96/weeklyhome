@@ -1,0 +1,162 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   WeeklyHome — Design system "Liquid Glass" (Light / Dark)
+   Tutto è guidato da token semantici (--c-*) che cambiano col
+   tema applicato su <html data-theme="...">. Le utility Tailwind
+   (text-fg, bg-contrast, glass, ...) puntano a questi token.
+   ============================================================ */
+
+@theme {
+  --color-bg: var(--c-bg);
+  --color-fg: var(--c-fg);
+  --color-contrast: var(--c-contrast);
+  --color-on-contrast: var(--c-on-contrast);
+  --color-fill: var(--c-fill);
+  --color-line: var(--c-line);
+  --color-accent: var(--c-accent);
+  --color-accent-2: var(--c-accent-2);
+  --color-mint: var(--c-mint);
+  --color-rose: var(--c-rose);
+  --color-amber: #ffcb6b;
+
+  --radius-glass: 26px;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* ---- Tema scuro (default) ---- */
+:root,
+[data-theme='dark'] {
+  --c-bg: #0b1020;
+  --c-fg: #e7ecff;
+  --c-contrast: #e7ecff;
+  --c-on-contrast: #0b1020;
+  --c-fill: rgb(255 255 255 / 0.1);
+  --c-line: rgb(255 255 255 / 0.1);
+  --c-accent: #6ea8ff;
+  --c-accent-2: #b388ff;
+  --c-mint: #5ce1b9;
+  --c-rose: #ff8fb1;
+
+  --c-glass-bg: rgb(255 255 255 / 0.08);
+  --c-glass-bg-strong: rgb(255 255 255 / 0.14);
+  --c-glass-border: rgb(255 255 255 / 0.18);
+  --c-glass-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.55);
+  --c-glass-inner: rgb(255 255 255 / 0.22);
+  --c-glass-sheen: rgb(255 255 255 / 0.25);
+
+  --aurora-1: rgb(110 168 255 / 0.45);
+  --aurora-2: rgb(179 136 255 / 0.4);
+  --aurora-3: rgb(92 225 185 / 0.32);
+  --aurora-4: rgb(255 143 177 / 0.28);
+  --grain: rgb(255 255 255 / 0.05);
+}
+
+/* ---- Tema chiaro ---- */
+[data-theme='light'] {
+  --c-bg: #eaeefb;
+  --c-fg: #16203a;
+  --c-contrast: #16203a;
+  --c-on-contrast: #f4f7ff;
+  --c-fill: rgb(22 32 58 / 0.06);
+  --c-line: rgb(22 32 58 / 0.1);
+  --c-accent: #3f76e0;
+  --c-accent-2: #8b5cf6;
+  --c-mint: #0f9d77;
+  --c-rose: #e0497a;
+
+  --c-glass-bg: rgb(255 255 255 / 0.55);
+  --c-glass-bg-strong: rgb(255 255 255 / 0.72);
+  --c-glass-border: rgb(255 255 255 / 0.85);
+  --c-glass-shadow: 0 14px 34px -16px rgb(20 30 60 / 0.28);
+  --c-glass-inner: rgb(255 255 255 / 0.7);
+  --c-glass-sheen: rgb(255 255 255 / 0.65);
+
+  --aurora-1: rgb(110 168 255 / 0.5);
+  --aurora-2: rgb(179 136 255 / 0.42);
+  --aurora-3: rgb(92 225 185 / 0.4);
+  --aurora-4: rgb(255 143 177 / 0.38);
+  --grain: rgb(22 32 58 / 0.04);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--c-fg);
+  background: var(--c-bg);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Sfondo "aurora": macchie di colore sfocate che danno vita al glass */
+.app-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 50% at 15% 12%, var(--aurora-1), transparent 70%),
+    radial-gradient(55% 45% at 88% 8%, var(--aurora-2), transparent 70%),
+    radial-gradient(60% 50% at 80% 92%, var(--aurora-3), transparent 72%),
+    radial-gradient(50% 45% at 10% 88%, var(--aurora-4), transparent 72%),
+    var(--c-bg);
+}
+
+.app-aurora::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background-image: radial-gradient(var(--grain) 1px, transparent 1px);
+  background-size: 3px 3px;
+  opacity: 0.4;
+  animation: drift 60s linear infinite;
+}
+
+@keyframes drift {
+  to {
+    transform: translate3d(2%, 2%, 0) rotate(8deg);
+  }
+}
+
+/* Superficie glass riutilizzabile */
+@utility glass {
+  background: var(--c-glass-bg);
+  border: 1px solid var(--c-glass-border);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: var(--c-glass-shadow), inset 0 1px 0 0 var(--c-glass-inner);
+}
+
+@utility glass-strong {
+  background: var(--c-glass-bg-strong);
+  border: 1px solid var(--c-glass-border);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: var(--c-glass-shadow), inset 0 1px 0 0 var(--c-glass-inner);
+}
+
+/* Riflesso luminoso sul bordo superiore di una card */
+@utility glass-sheen {
+  position: relative;
+}
+
+.glass-sheen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--c-glass-sheen) 0%, transparent 28%);
+  pointer-events: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    env:
+      # Prisma generate legge lo schema ma NON si connette: valore segnaposto.
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
+      DIRECT_URL: "postgresql://user:pass@localhost:5432/db"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build domain
+        run: npm run build:domain
+      - name: Test domain
+        run: npm run test:domain
+      - name: Build API (prisma generate + tsc)
+        run: npm run build --workspace @weeklyhome/api
+      - name: Test API
+        run: npm run test --workspace @weeklyhome/api
+      - name: Build web
+        run: npm run build --workspace @weeklyhome/web

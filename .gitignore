@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Prisma / SQLite (DB locale generato)
+*.db
+*.db-journal
+.prisma/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vite/
+
+# Deploy / tooling
+.vercel/
+.turbo/
+.eq-tipo/

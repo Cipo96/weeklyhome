@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Neon: URL "pooled" (PgBouncer) per le query a runtime (serverless-friendly)…
+  url       = env("DATABASE_URL")
+  // …e URL "diretto" per le migrazioni (Prisma migrate).
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  familyId  String?
+  family    Family?  @relation(fields: [familyId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Family {
+  id         String   @id @default(cuid())
+  name       String
+  inviteCode String   @unique
+  users      User[]
+  members    Member[]
+  plans      Plan[]
+  createdAt  DateTime @default(now())
+}
+
+model Member {
+  id         String  @id @default(cuid())
+  name       String
+  doseFactor Float   @default(1)
+  familyId   String
+  family     Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+}
+
+model Plan {
+  id        String         @id @default(cuid())
+  familyId  String
+  family    Family         @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  status    String         @default("REVIEW") // REVIEW | ACTIVE | ARCHIVED
+  // Periodo di validità del piano (i piani cambiano ogni tot mesi). validFrom è
+  // impostato alla conferma; validTo viene chiuso automaticamente quando un nuovo
+  // piano lo sostituisce → storico dei periodi.
+  validFrom DateTime?
+  validTo   DateTime?
+  meals     Meal[]
+  overrides MealOverride[]
+  createdAt DateTime       @default(now())
+}
+
+/// Correzione di un pasto rispetto al reale (US-008): sostituisce gli alimenti
+/// di un'occorrenza (day+type). memberId null = vale per tutto il nucleo.
+model MealOverride {
+  id        String             @id @default(cuid())
+  planId    String
+  plan      Plan               @relation(fields: [planId], references: [id], onDelete: Cascade)
+  day       Int
+  type      String
+  memberId  String?
+  items     MealOverrideItem[]
+  createdAt DateTime           @default(now())
+
+  @@unique([planId, day, type, memberId])
+}
+
+model MealOverrideItem {
+  id         String       @id @default(cuid())
+  overrideId String
+  override   MealOverride @relation(fields: [overrideId], references: [id], onDelete: Cascade)
+  foodId     String
+  name       String?
+  value      Float
+  unit       String
+  /// Categoria canonica (tassonomia) per il match prezzi, come MealItem.
+  category   String?
+}
+
+model Meal {
+  id     String     @id @default(cuid())
+  planId String
+  plan   Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  day    Int
+  type   String // BREAKFAST | LUNCH | SNACK | DINNER
+  // Indice dell'opzione (alternativa) attualmente pianificata per questo pasto.
+  // I pasti del nutrizionista spesso offrono alternative ("X oppure Y"): gli item
+  // sono raggruppati per `MealItem.optionIndex` e solo quelli dell'opzione
+  // selezionata contano per consumo/lista della spesa.
+  selectedOption Int        @default(0)
+  items          MealItem[]
+}
+
+model MealItem {
+  id     String  @id @default(cuid())
+  mealId String
+  meal   Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  foodId String
+  name   String? // nome leggibile (utile per alimenti estratti dal PDF non in catalogo)
+  value  Float
+  unit   String
+  // Raggruppamento per alternativa di pasto (0 = prima opzione/predefinita).
+  optionIndex Int     @default(0)
+  // Etichetta opzionale dell'alternativa (es. "Tortino yogurt"), per la UI.
+  optionLabel String?
+  /// Categoria canonica (tassonomia) calcolata all'import per il match prezzi.
+  category    String?
+}
+
+model Store {
+  id         String             @id
+  name       String
+  brandColor String
+  distanceKm Float // distanza di default (usata se manca la posizione utente)
+  lat        Float? // coordinate reali del punto vendita
+  lon        Float?
+  prices     Price[]
+  products   VolantinoProduct[]
+}
+
+/// Prodotto reale trovato in un volantino (nome commerciale + marca + formato),
+/// con prezzo e validità. A differenza di Price (un solo prezzo per alimento×negozio,
+/// usato dall'ottimizzatore), qui teniamo OGNI prodotto estratto — anche quelli fuori
+/// dal catalogo staple — per il dettaglio offerta (marca) e la ricerca prodotti.
+model VolantinoProduct {
+  id            String    @id @default(cuid())
+  storeId       String
+  store         Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name          String
+  brand         String?
+  /// Prezzo dell'offerta per la confezione, in €.
+  price         Float
+  quantityValue Float
+  quantityUnit  String
+  /// Prezzo normalizzato €/kg · €/l · €/pz.
+  unitPrice     Float
+  /// Id catalogo agganciato (staple o slug `x-…`) per il match con il piano.
+  foodId        String?
+  /// Categoria canonica (tassonomia) per il match con il piano; null se ignota.
+  category      String?
+  source        String // 'volantino:conad' | 'volantino:todis' | …
+  fetchedAt     DateTime  @default(now())
+  validTo       DateTime?
+
+  @@index([storeId])
+  @@index([foodId])
+  @@index([name])
+}
+
+/// Prezzo di un alimento in un negozio, con metadati di freschezza.
+model Price {
+  id        String    @id @default(cuid())
+  foodId    String
+  storeId   String
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  unitPrice Float // € per kg / l / pz
+  source    String    @default("mock") // 'mock' | 'site:<chain>' | 'aggregator:<name>'
+  fetchedAt DateTime  @default(now())
+  validTo   DateTime?
+
+  @@unique([foodId, storeId])
+}
+
+/// Cache appresa nome→categoria canonica, popolata dall'AI all'ingestione per i
+/// nomi non coperti dal dizionario statico. `source` distingue dict/ai.
+model NameCategory {
+  nameNorm  String   @id
+  category  String? // slug della tassonomia, o null se l'AI non sa collocarlo
+  source    String   @default("ai") // 'dict' | 'ai'
+  createdAt DateTime @default(now())
+}

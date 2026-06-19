@@ -1,0 +1,6 @@
+paths:
+  prd: docs/PRD.md
+  backlog: docs/BACKLOG.md
+  planning: docs/planning
+  mockups: docs/mockups
+  test_results: docs/test-results
