@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "test:domain": "npm --workspace @weeklyhome/domain run test",
-    "build:domain": "npm --workspace @weeklyhome/domain run build"
+    "build:domain": "npm --workspace @weeklyhome/domain run build",
+    "build": "npm run build --workspace @weeklyhome/domain && npm run build --workspace @weeklyhome/web"
   },
   "license": "UNLICENSED"
 }
