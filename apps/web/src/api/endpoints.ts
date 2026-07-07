@@ -77,6 +77,8 @@ export const shoppingApi = {
 export const priceApi = {
   stores: (radiusKm: number) => apiFetch<ApiStore[]>(`/prices/stores?radius=${radiusKm}`),
   refresh: () => apiFetch<{ provider: string; updated: number }>('/prices/refresh', { method: 'POST' }),
+  refreshVolantini: () =>
+    apiFetch<{ started: boolean }>('/prices/volantino/refresh-all', { method: 'POST' }),
   search: (q: string) =>
     apiFetch<ApiProductSearchResult[]>(`/prices/search?q=${encodeURIComponent(q)}`),
 };

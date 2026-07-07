@@ -195,23 +195,62 @@ export class PriceService implements OnModuleInit {
   }
 
   /**
-   * Refresh schedulato settimanale delle offerte volantino Conad (la vision AI è
-   * costosa e i volantini cambiano ~settimanalmente). Salta in assenza di chiave AI.
+   * Refresh schedulato settimanale delle offerte volantino (Conad + Todis): la
+   * vision AI è costosa e i volantini cambiano ~settimanalmente. Giovedì mattina,
+   * quando i volantini Conad di metà settimana sono già usciti. Salta senza chiave AI.
+   *
+   * NB: è un fallback in-process — su Render free il processo può dormire all'orario
+   * del cron, quindi la sorgente PRIMARIA è il trigger esterno (cron-job.org →
+   * POST /cron/weekly). Con force=false le due strade non sprecano quota a vicenda:
+   * la seconda trova i dati freschi e salta.
    */
-  @Cron(CronExpression.EVERY_WEEK)
+  @Cron('0 6 * * 4')
   async scheduledVolantinoRefresh(): Promise<void> {
     if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) return;
-    this.logger.log('Refresh volantini schedulato…');
-    try {
-      await this.refreshConadVolantino();
-    } catch (e) {
-      this.logger.warn(`Refresh volantino Conad fallito: ${e instanceof Error ? e.message : e}`);
-    }
-    try {
-      await this.refreshTodisVolantino();
-    } catch (e) {
-      this.logger.warn(`Refresh volantino Todis fallito: ${e instanceof Error ? e.message : e}`);
-    }
+    this.logger.log('Refresh volantini schedulato (giovedì)…');
+    await this.refreshAllVolantini(false);
+  }
+
+  /**
+   * Refresh combinato di TUTTI i volantini vision (Conad + Todis) in un'unica
+   * operazione. Ogni insegna è isolata: il fallimento di una non blocca l'altra.
+   * Con force=false rispetta la validità (salta il volantino ancora buono),
+   * quindi è sicuro richiamarlo spesso (cron + eventuale doppione manuale).
+   */
+  async refreshAllVolantini(force = false): Promise<{
+    conad: { ok: boolean; skipped?: boolean; matched?: number; error?: string };
+    todis: { ok: boolean; skipped?: boolean; matched?: number; error?: string };
+  }> {
+    const run = async (
+      label: string,
+      fn: () => Promise<{ matched: number; skipped?: boolean }>,
+    ): Promise<{ ok: boolean; skipped?: boolean; matched?: number; error?: string }> => {
+      try {
+        const r = await fn();
+        return { ok: true, skipped: r.skipped, matched: r.matched };
+      } catch (e) {
+        const error = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`Refresh volantino ${label} fallito: ${error}`);
+        return { ok: false, error };
+      }
+    };
+    return {
+      conad: await run('Conad', () => this.refreshConadVolantino('conad', force)),
+      todis: await run('Todis', () => this.refreshTodisVolantino('todis', force)),
+    };
+  }
+
+  /**
+   * Avvia il refresh volantini in background e ritorna SUBITO: la vision dura
+   * minuti e supererebbe i timeout HTTP di browser/proxy (Render, cron-job.org).
+   * Chi chiama riceve solo la conferma di avvio; l'esito finisce nei log.
+   */
+  startVolantiniRefresh(force = false): void {
+    void this.refreshAllVolantini(force).catch((e) =>
+      this.logger.error(
+        `Refresh volantini in background fallito: ${e instanceof Error ? e.message : e}`,
+      ),
+    );
   }
 
   /**

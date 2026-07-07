@@ -49,6 +49,9 @@ interface AppState {
   overrideFor: (day: DayOfWeek, type: MealType) => ApiMealOverride | undefined;
   refreshingPrices: boolean;
   refreshPrices: () => Promise<void>;
+  refreshingVolantini: boolean;
+  volantiniStarted: boolean;
+  refreshVolantini: () => Promise<void>;
   reload: () => Promise<void>;
   foodMeta: (foodId: string, name?: string | null) => FoodMeta;
 }
@@ -68,6 +71,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<OptimizeMode>('cheapest');
   const [radiusKm, setRadiusState] = useState<number>(5);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [refreshingVolantini, setRefreshingVolantini] = useState(false);
+  const [volantiniStarted, setVolantiniStarted] = useState(false);
   const [userPos, setUserPos] = useState<{ lat: number; lon: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const posRef = useRef<{ lat: number; lon: number } | null>(null);
@@ -280,6 +285,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [loadShopping, mode, radiusKm, plan]);
 
+  // Fire-and-forget: la vision dura minuti, quindi l'API avvia il lavoro e torna
+  // subito. Mostriamo un avviso; i prezzi vanno ricaricati manualmente dopo qualche minuto.
+  const refreshVolantini = useCallback(async () => {
+    setRefreshingVolantini(true);
+    try {
+      await priceApi.refreshVolantini();
+      setVolantiniStarted(true);
+    } finally {
+      setRefreshingVolantini(false);
+    }
+  }, []);
+
   const foodMeta = useCallback((foodId: string, name?: string | null): FoodMeta => {
     const known = FOODS[foodId];
     if (known) return known;
@@ -321,6 +338,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     overrideFor,
     refreshingPrices,
     refreshPrices,
+    refreshingVolantini,
+    volantiniStarted,
+    refreshVolantini,
     reload,
     foodMeta,
   };

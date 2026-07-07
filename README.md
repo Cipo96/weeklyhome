@@ -48,10 +48,16 @@ npm run test:domain
 - `POST /plan/import` (multipart `file` PDF opzionale → estrazione Claude; senza file → piano di esempio) · `POST /plan/:id/confirm` · `GET /plan/active`
 - `POST /plan/overrides` (correzione pasto `{day,type,items}`) · `DELETE /plan/overrides?day=&type=` (ripristina)
 - `GET /shopping?mode=cheapest|fewest&radius=<km>` → lista + ottimizzazione (riusa `@weeklyhome/domain`)
-- `GET /prices/stores?radius=<km>` · `POST /prices/refresh` (riacquisisce i prezzi dal provider)
+- `GET /prices/stores?radius=<km>` · `POST /prices/refresh` (riacquisisce i prezzi base dai provider HTTP: gratis, veloce)
+- `POST /prices/volantino/refresh-all?force=` (refresh manuale di TUTTI i volantini vision Conad+Todis; fire-and-forget, risponde subito e lavora in background)
+- `POST /prices/volantino/auto?force=` (solo Conad) · `POST /prices/volantino/todis?force=` (solo Todis)
 - `POST /prices/volantino?storeId=conad` (multipart `files`: PDF o immagini del volantino → estrazione prezzi con Claude vision → salvataggio)
 
-Le rotte (eccetto auth) richiedono header `Authorization: Bearer <token>`.
+Le rotte sopra (eccetto auth) richiedono header `Authorization: Bearer <token>`.
+
+**Endpoint pubblici (no JWT):**
+- `GET /health` — keep-alive/health-check
+- `POST /cron/weekly` — refresh settimanale "di tutto" (base HTTP + volantini vision) innescato da uno scheduler esterno; protetto da `CRON_SECRET` via header `x-cron-token` o query `?token=`
 
 ### Variabili d'ambiente (`apps/api/.env`)
 - `DATABASE_URL` — SQLite (default `file:./dev.db`)
@@ -74,8 +80,15 @@ curl -X POST "http://localhost:3000/api/prices/volantino?storeId=conad" \
 # → { extracted, matched, foods: [...] }  e i prezzi finiscono in DB (source: volantino:conad)
 ```
 
-Poi `GET /shopping?...` userà quei prezzi reali. (Acquisizione automatica del volantino:
-prossimo passo — vedi note in `docs/BACKLOG.md`.)
+Poi `GET /shopping?...` userà quei prezzi reali.
+
+### Aggiornamento automatico (cron)
+Due `@Cron` in-process (`@nestjs/schedule`): prezzi base ogni giorno alle **6:00**, volantini vision ogni **giovedì alle 6:00**. Su Render free il processo dorme dopo 15 min → il `@Cron` può non scattare all'orario. Perciò lo scheduling **primario è esterno** (cron-job.org, gratis):
+
+1. **Keep-alive** — `GET https://weeklyhome.onrender.com/api/health` ogni ~10 min (tiene sveglio Render).
+2. **Refresh settimanale** — `POST https://weeklyhome.onrender.com/api/cron/weekly` una volta a settimana (es. giovedì 06:00), con header `x-cron-token: <CRON_SECRET>`. Fa il refresh base + avvia i volantini vision. È `non-force`: se un volantino è ancora valido salta l'estrazione (risparmio quota Gemini).
+
+Imposta `CRON_SECRET` (stringa lunga e casuale) nelle env di Render e nel job cron-job.org. Dalla UI, il pulsante **«Aggiorna volantini»** in ShopScreen fa lo stesso refresh vision a mano.
 
 ### App completa (frontend collegato all'API)
 Avvia entrambi (due terminali):

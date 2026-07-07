@@ -62,6 +62,22 @@ export class PriceController {
     return this.price.refreshConadVolantino('conad', force === 'true');
   }
 
+  /**
+   * Refresh manuale di TUTTI i volantini (Conad + Todis) dietro il pulsante
+   * "Aggiorna volantini". Fire-and-forget: la vision dura minuti, quindi avvia
+   * il lavoro in background e risponde subito. force salta il check di validità.
+   */
+  @Post('volantino/refresh-all')
+  refreshAllVolantini(@Query('force') force?: string): { started: boolean } {
+    if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      throw new ServiceUnavailableException(
+        'Estrazione volantino non disponibile: imposta GEMINI_API_KEY (o ANTHROPIC_API_KEY) in apps/api/.env',
+      );
+    }
+    this.price.startVolantiniRefresh(force === 'true');
+    return { started: true };
+  }
+
   /** Recupero automatico delle offerte dal volantino Todis (PDF). Richiede chiave AI. */
   @Post('volantino/todis')
   refreshTodisVolantino(@Query('force') force?: string) {

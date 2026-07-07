@@ -8,6 +8,7 @@ import { PlanModule } from './plan/plan.module.js';
 import { PriceModule } from './price/price.module.js';
 import { ShoppingModule } from './shopping/shopping.module.js';
 import { HealthController } from './health.controller.js';
+import { CronController } from './cron.controller.js';
 
 @Module({
   imports: [
@@ -20,6 +21,6 @@ import { HealthController } from './health.controller.js';
     PriceModule,
     ShoppingModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, CronController],
 })
 export class AppModule {}

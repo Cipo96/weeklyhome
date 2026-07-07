@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   RefreshCw,
   Navigation,
+  Newspaper,
 } from 'lucide-react';
 import {
   optimizeCheapest,
@@ -76,7 +77,16 @@ function Loaded({
   setExpanded: (id: string | null) => void;
   foodMeta: ReturnType<typeof useApp>['foodMeta'];
 }) {
-  const { refreshPrices, refreshingPrices, userPos, locating, requestLocation } = useApp();
+  const {
+    refreshPrices,
+    refreshingPrices,
+    refreshVolantini,
+    refreshingVolantini,
+    volantiniStarted,
+    userPos,
+    locating,
+    requestLocation,
+  } = useApp();
   // Filtro negozi (solo vista): i negozi ESCLUSI dalla selezione. Vuoto = tutti
   // attivi. Ricalcoliamo la spesa lato client sui soli negozi attivi, senza rete.
   const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
@@ -141,15 +151,33 @@ function Loaded({
               : 'Prezzi non ancora aggiornati'}
           </p>
         </div>
-        <button
-          onClick={() => void refreshPrices()}
-          disabled={refreshingPrices}
-          className="glass flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-fg transition active:scale-95 disabled:opacity-60"
-        >
-          <RefreshCw className={cn('size-4', refreshingPrices && 'animate-spin')} />
-          {refreshingPrices ? 'Aggiorno…' : 'Aggiorna prezzi'}
-        </button>
+        <div className="flex flex-col items-stretch gap-2">
+          <button
+            onClick={() => void refreshPrices()}
+            disabled={refreshingPrices}
+            className="glass flex items-center justify-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-fg transition active:scale-95 disabled:opacity-60"
+          >
+            <RefreshCw className={cn('size-4', refreshingPrices && 'animate-spin')} />
+            {refreshingPrices ? 'Aggiorno…' : 'Aggiorna prezzi'}
+          </button>
+          <button
+            onClick={() => void refreshVolantini()}
+            disabled={refreshingVolantini}
+            title="Riestrae i volantini Conad e Todis (richiede qualche minuto)"
+            className="glass flex items-center justify-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-fg transition active:scale-95 disabled:opacity-60"
+          >
+            <Newspaper className={cn('size-4', refreshingVolantini && 'animate-pulse')} />
+            {refreshingVolantini ? 'Avvio…' : 'Aggiorna volantini'}
+          </button>
+        </div>
       </header>
+
+      {volantiniStarted && (
+        <p className="rounded-2xl bg-fg/5 px-4 py-3 text-xs text-fg/70">
+          Aggiornamento volantini avviato: richiede qualche minuto. Tra poco tocca di nuovo
+          «Aggiorna prezzi» per vedere le nuove offerte.
+        </p>
+      )}
 
       <GlassCard strong className="p-5">
         <div className="flex items-end justify-between">

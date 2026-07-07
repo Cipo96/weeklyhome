@@ -1,8 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { PriceService } from '../dist/price/price.service.js';
+import { CategoryService } from '../dist/category/category.service.js';
 
 const prisma = new PrismaClient();
-const svc = new PriceService(prisma);
+const svc = new PriceService(prisma, new CategoryService(prisma));
 
 console.log('== Refresh volantino CONAD (force) ==');
 try {
