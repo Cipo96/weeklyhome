@@ -40,6 +40,7 @@ interface AppState {
   importPlan: (file?: File) => Promise<void>;
   confirmDraft: (validFrom?: string) => Promise<void>;
   discardDraft: () => void;
+  editActivePlan: () => Promise<void>;
   updateDraftItem: (itemId: string, patch: { name?: string; value?: number; unit?: string }) => Promise<void>;
   deleteDraftItem: (itemId: string) => Promise<void>;
   addDraftItem: (mealId: string, body: { name: string; value: number; unit: string; optionIndex?: number }) => Promise<void>;
@@ -222,14 +223,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     try {
       await planApi.confirm(draft.id, validFrom);
-      const activePlan = await planApi.getActive();
-      setPlan(activePlan);
+      // Ricarica il piano attivo che è appena stato confermato
+      setPlan(await planApi.active());
       setDraft(null);
-      await loadShopping(mode, radiusKm, Boolean(activePlan));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Errore nella conferma');
     } finally {
       setBusy(false);
     }
-  }, [draft, loadShopping, mode, radiusKm]);
+  }, [draft]);
+
+  const editActivePlan = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setDraft(await fetchApi('/plan/edit-active', { method: 'POST' }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossibile riaprire il piano');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   const updateDraftItem = useCallback(
     async (itemId: string, patch: { name?: string; value?: number; unit?: string }) => {
@@ -329,6 +343,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     importPlan,
     confirmDraft,
     discardDraft,
+    editActivePlan,
     updateDraftItem,
     deleteDraftItem,
     addDraftItem,

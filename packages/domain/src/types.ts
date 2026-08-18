@@ -5,7 +5,7 @@
  */
 
 /** Unità di misura supportate. `pz` = pezzi (conteggio). */
-export type Unit = 'g' | 'kg' | 'ml' | 'l' | 'pz';
+export type Unit = 'g' | 'kg' | 'ml' | 'l' | 'pz' | 'qb' | 'cucchiaio' | 'cucchiaino';
 
 /**
  * Tipo di pasto della giornata. Spuntino (metà mattina) e merenda (pomeriggio)

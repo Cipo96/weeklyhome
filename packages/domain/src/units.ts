@@ -9,6 +9,9 @@ const DIMENSION: Record<Unit, Dimension> = {
   ml: 'volume',
   l: 'volume',
   pz: 'count',
+  qb: 'count',
+  cucchiaio: 'volume',
+  cucchiaino: 'volume',
 };
 
 /** Unità base canonica per dimensione (in cui si fanno i conti). */
@@ -25,6 +28,9 @@ const TO_BASE: Record<Unit, number> = {
   ml: 1,
   l: 1000,
   pz: 1,
+  qb: 1,
+  cucchiaio: 15,
+  cucchiaino: 5,
 };
 
 export function dimensionOf(unit: Unit): Dimension {

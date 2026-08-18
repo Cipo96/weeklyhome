@@ -6,7 +6,7 @@ export const eur = (n: number): string =>
 
 /** Formatta una quantità con la sua unità. */
 export const qty = (q: Quantity): string =>
-  `${q.value.toLocaleString('it-IT', { maximumFractionDigits: 2 })} ${q.unit}`;
+  q.unit === 'qb' ? 'q.b.' : `${q.value.toLocaleString('it-IT', { maximumFractionDigits: 2 })} ${q.unit}`;
 
 /** Prezzo unitario, es. "1,05 €/kg". */
 export const unitEur = (n: number, unit: string): string => {

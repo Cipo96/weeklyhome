@@ -12,7 +12,7 @@ Regole:
 - I pasti hanno type tra: BREAKFAST, MORNING_SNACK, LUNCH, AFTERNOON_SNACK, DINNER.
   MORNING_SNACK = spuntino di metà mattina, AFTERNOON_SNACK = merenda del pomeriggio:
   sono pasti DISTINTI, distinguili dal momento della giornata (mai unirli in uno solo).
-- Per ogni alimento estrai nome, quantità numerica e unità tra: g, kg, ml, l, pz.
+- Per ogni alimento estrai nome, quantità numerica e unità tra: g, kg, ml, l, pz, qb, cucchiaio, cucchiaino. Se "quantità libera" usa "qb" con valore 0.
 - Converti porzioni testuali in numeri quando possibile (es. "2 uova" -> value 2, unit pz).
 - Per alimenti SPALMABILI o MISURABILI (marmellata, miele, olio, yogurt, latte, carne, pesce,
   formaggi) usa SEMPRE g o ml, MAI "pz". Usa "pz" solo per ciò che è davvero a pezzi interi
@@ -26,7 +26,9 @@ Regole:
   metti il nome in "label" MA includi comunque i suoi ingredienti come "items"
   (es. Caprese -> mozzarella, pomodoro). Non lasciare MAI un'opzione con soli
   condimenti/contorni (es. solo olio o solo pane): ogni opzione deve avere l'alimento principale.
-- Non inventare pasti non presenti nel documento.`;
+- Non inventare pasti non presenti nel documento, MA non saltare i pasti esplicitamente indicati come liberi: se è scritto "Pranzo libero", aggiungi il pasto LUNCH e inserisci un alimento chiamato "Pasto libero" (oppure "Libero") con quantità 0 e unit qb.
+- Evita assolutamente di duplicare lo stesso alimento all'interno della stessa opzione (es. non inserire due volte "Barbabietola rossa" se è indicata una sola volta).
+- Non inserire alimenti "fantasma" in giorni successivi se non sono scritti nel PDF per quel giorno esatto. Sii molto rigido nell'assegnare il pasto al giorno corretto.`;
 
 const SAVE_PLAN_TOOL: Anthropic.Tool = {
   name: 'save_plan',
@@ -58,7 +60,7 @@ const SAVE_PLAN_TOOL: Anthropic.Tool = {
                       properties: {
                         name: { type: 'string' },
                         value: { type: 'number' },
-                        unit: { type: 'string', enum: ['g', 'kg', 'ml', 'l', 'pz'] },
+                        unit: { type: 'string', enum: ['g', 'kg', 'ml', 'l', 'pz', 'qb', 'cucchiaio', 'cucchiaino'] },
                       },
                       required: ['name', 'value', 'unit'],
                     },

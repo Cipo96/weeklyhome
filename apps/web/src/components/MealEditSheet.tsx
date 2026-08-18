@@ -7,7 +7,7 @@ import { planApi } from '../api/endpoints';
 import { useApp } from '../state/AppContext';
 import { MEAL_LABELS, qty } from '../lib/format';
 
-const UNITS: Unit[] = ['g', 'kg', 'ml', 'l', 'pz'];
+const UNITS: Unit[] = ['g', 'kg', 'ml', 'l', 'pz', 'qb', 'cucchiaio', 'cucchiaino'];
 
 interface EditRow {
   foodId?: string;
@@ -127,7 +127,7 @@ export function MealEditSheet({ meal, onClose }: { meal: ApiMeal | null; onClose
         value: Number(r.value.replace(',', '.')),
         unit: r.unit,
       }))
-      .filter((r) => r.name.length > 0 && Number.isFinite(r.value) && r.value > 0);
+      .filter((r) => r.name.length > 0 && Number.isFinite(r.value) && r.value >= 0);
     void apply(items);
   };
 

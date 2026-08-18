@@ -128,6 +128,47 @@ export class PlanService {
     });
   }
 
+  /** Crea una bozza clonando il piano attivo (per modifica in blocco). */
+  async editActivePlan(userId: string) {
+    const familyId = await this.family.requireFamilyId(userId);
+    const activePlan = await this.prisma.plan.findFirst({
+      where: { familyId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+      include: { meals: { include: { items: true } } },
+    });
+    if (!activePlan) throw new NotFoundException('Nessun piano attivo da modificare');
+
+    await this.prisma.plan.deleteMany({
+      where: { familyId, status: 'REVIEW' },
+    });
+
+    return this.prisma.plan.create({
+      data: {
+        familyId,
+        status: 'REVIEW',
+        meals: {
+          create: activePlan.meals.map((m) => ({
+            day: m.day,
+            type: m.type,
+            selectedOption: m.selectedOption,
+            items: {
+              create: m.items.map((it) => ({
+                foodId: it.foodId,
+                name: it.name,
+                value: it.value,
+                unit: it.unit,
+                optionIndex: it.optionIndex,
+                optionLabel: it.optionLabel,
+                category: it.category,
+              })),
+            },
+          })),
+        },
+      },
+      include: { meals: { include: { items: true }, orderBy: [{ day: 'asc' }, { type: 'asc' }] } },
+    });
+  }
+
   /** Carica una voce verificando che appartenga a un piano REVIEW del nucleo. */
   private async requireEditableItem(userId: string, itemId: string) {
     const familyId = await this.family.requireFamilyId(userId);

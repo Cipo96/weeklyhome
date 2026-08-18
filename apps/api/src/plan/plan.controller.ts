@@ -96,6 +96,12 @@ export class PlanController {
     return this.plan.getDraft(user.sub);
   }
 
+  /** Clona il piano attivo in bozza per modificarlo. */
+  @Post('edit-active')
+  editActive(@CurrentUser() user: JwtPayload) {
+    return this.plan.editActivePlan(user.sub);
+  }
+
   /** Modifica una voce della bozza (quantità/unità/nome). */
   @Patch('items/:itemId')
   updateItem(

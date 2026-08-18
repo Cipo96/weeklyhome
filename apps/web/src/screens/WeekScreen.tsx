@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarOff, Pencil } from 'lucide-react';
+import { CalendarOff, Pencil, ChevronLeft, ChevronRight, ChefHat } from 'lucide-react';
 import type { DayOfWeek } from '@weeklyhome/domain';
-import type { ApiMeal } from '../api/types';
+import type { ApiMeal, ApiPlan } from '../api/types';
 import { useApp } from '../state/AppContext';
 import { GlassCard } from '../components/GlassCard';
 import { MealEditSheet } from '../components/MealEditSheet';
@@ -53,14 +53,52 @@ function todayTime(): number {
   return t.getTime();
 }
 
-export function WeekScreen() {
-  const { plan, foodMeta, overrideFor } = useApp();
+function getMealPrepAdvices(plan: ApiPlan, foodMeta: any) {
+  const prepKeywords = [
+    'riso', 'farro', 'orzo', 'quinoa', 'patate', 'ceci', 'fagioli', 'lenticchie', 'pollo', 'tacchino'
+  ];
+  
+  const occurrences = new Map<string, { days: Set<number> }>();
+  
+  for (const m of plan.meals) {
+    const items = m.items.filter(it => it.optionIndex === m.selectedOption);
+    for (const it of items) {
+      if (prepKeywords.some(k => it.foodId.includes(k))) {
+        const entry = occurrences.get(it.foodId) ?? { days: new Set<number>() };
+        entry.days.add(m.day);
+        occurrences.set(it.foodId, entry);
+      }
+    }
+  }
+
+  const advices: { name: string, days: number[] }[] = [];
+  for (const [foodId, entry] of occurrences.entries()) {
+    if (entry.days.size >= 2) {
+      advices.push({
+        name: foodMeta(foodId).name,
+        days: Array.from(entry.days).sort((a,b) => a-b)
+      });
+    }
+  }
+
+  return advices;
+}
+
+export function WeekScreen({ onNavigate }: { onNavigate?: (tab: 'import' | 'shop' | 'search' | 'family') => void }) {
+  const { plan, foodMeta, overrideFor, editActivePlan } = useApp();
   const week = calendarDays();
   // La selezione è per DATA (timestamp di mezzanotte): in 10 giorni lo stesso
   // giorno-settimana ricorre, quindi non basta il weekday a identificarla.
   const [selectedTime, setSelectedTime] = useState<number>(todayTime);
   const [editing, setEditing] = useState<ApiMeal | null>(null);
   const todayRef = useRef<HTMLButtonElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollBy = (amount: number) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({ left: amount, behavior: 'smooth' });
+    }
+  };
 
   // All'apertura porta "Oggi" in vista (ha alcuni giorni passati alla sua sinistra).
   useEffect(() => {
@@ -86,6 +124,7 @@ export function WeekScreen() {
   });
   const dayKcal = mealRows.reduce((sum, r) => sum + r.est.kcal, 0);
   const dayPartial = mealRows.some((r) => r.est.partial);
+  const mealPrep = getMealPrepAdvices(plan, foodMeta);
 
   return (
     <div className="flex flex-col gap-5">
@@ -110,38 +149,84 @@ export function WeekScreen() {
             ≈ {dayKcal} kcal stimate{dayPartial ? '+' : ''} nel giorno
           </p>
         )}
+        <button
+          onClick={async () => {
+            await editActivePlan();
+            onNavigate?.('import');
+          }}
+          className="mt-3 flex w-fit items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/25 active:scale-95"
+        >
+          <Pencil className="size-3.5" /> Modifica intero piano
+        </button>
       </header>
 
-      <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
-        {week.map(({ weekday, date, isToday, isPast }) => {
-          const isActive = date.getTime() === selectedTime;
-          return (
-            <button
-              key={date.toISOString()}
-              ref={isToday ? todayRef : undefined}
-              onClick={() => setSelectedTime(date.getTime())}
-              className={cn(
-                'relative flex h-16 w-13 shrink-0 flex-col items-center justify-center rounded-2xl px-3 text-sm font-semibold transition-colors',
-                isActive
-                  ? 'text-on-contrast'
-                  : cn('glass', isPast ? 'text-fg/40' : 'text-fg/80'),
-              )}
-            >
-              {isActive && (
-                <motion.span
-                  layoutId="day-pill"
-                  className="absolute inset-0 rounded-2xl bg-contrast"
-                  transition={{ type: 'spring', stiffness: 480, damping: 38 }}
-                />
-              )}
-              <span className="relative z-10 text-[11px] opacity-70">
-                {isToday ? 'Oggi' : DAY_LABELS[weekday]}
-              </span>
-              <span className="relative z-10 text-lg">{date.getDate()}</span>
-            </button>
-          );
-        })}
+      <div className="group relative -mx-5">
+        <button
+          onClick={() => scrollBy(-150)}
+          className="absolute left-1 top-1/2 z-20 -translate-y-1/2 grid size-8 place-items-center rounded-full bg-bg/80 text-fg/70 shadow-sm backdrop-blur transition-opacity opacity-0 group-hover:opacity-100 md:opacity-100"
+        >
+          <ChevronLeft className="size-5" />
+        </button>
+
+        <div ref={scrollRef} className="flex gap-2 overflow-x-auto px-5 pb-1 scrollbar-hide">
+          {week.map(({ weekday, date, isToday, isPast }) => {
+            const isActive = date.getTime() === selectedTime;
+            return (
+              <button
+                key={date.toISOString()}
+                ref={isToday ? todayRef : undefined}
+                onClick={() => setSelectedTime(date.getTime())}
+                className={cn(
+                  'relative flex h-16 w-13 shrink-0 flex-col items-center justify-center rounded-2xl px-3 text-sm font-semibold transition-colors',
+                  isActive
+                    ? 'text-on-contrast'
+                    : cn('glass', isPast ? 'text-fg/40' : 'text-fg/80'),
+                )}
+              >
+                {isActive && (
+                  <motion.span
+                    layoutId="day-pill"
+                    className="absolute inset-0 rounded-2xl bg-contrast"
+                    transition={{ type: 'spring', stiffness: 480, damping: 38 }}
+                  />
+                )}
+                <span className="relative z-10 text-[11px] opacity-70">
+                  {isToday ? 'Oggi' : DAY_LABELS[weekday]}
+                </span>
+                <span className="relative z-10 text-lg">{date.getDate()}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => scrollBy(150)}
+          className="absolute right-1 top-1/2 z-20 -translate-y-1/2 grid size-8 place-items-center rounded-full bg-bg/80 text-fg/70 shadow-sm backdrop-blur transition-opacity opacity-0 group-hover:opacity-100 md:opacity-100"
+        >
+          <ChevronRight className="size-5" />
+        </button>
       </div>
+
+      {mealPrep.length > 0 && (
+        <GlassCard strong className="p-5 border-amber/20 bg-amber/5">
+          <div className="flex items-center gap-2 mb-3 text-amber-600 dark:text-amber-400">
+            <ChefHat className="size-5" />
+            <h2 className="font-semibold text-sm">Consigli Meal Prep</h2>
+          </div>
+          <ul className="text-sm text-fg/80 space-y-2">
+            {mealPrep.map((adv, i) => {
+              const d1 = DAY_LABELS_FULL[adv.days[0]].toLowerCase();
+              const d2 = DAY_LABELS_FULL[adv.days[1]].toLowerCase();
+              return (
+                <li key={i}>
+                  Mangi <strong>{adv.name.toLowerCase()}</strong> il {d1} e il {d2}. 
+                  Cuoci le porzioni in anticipo per risparmiare tempo!
+                </li>
+              );
+            })}
+          </ul>
+        </GlassCard>
+      )}
 
       <div className="flex flex-col gap-4">
         {mealRows.map(({ meal, override, items, est }, idx) => {

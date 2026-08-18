@@ -14,10 +14,10 @@ import { SearchScreen } from './screens/SearchScreen';
 import { FamilyScreen } from './screens/FamilyScreen';
 import { ImportScreen } from './screens/ImportScreen';
 
-function renderTab(tab: TabId): ReactNode {
+function renderTab(tab: TabId, setTab: (t: TabId) => void): ReactNode {
   switch (tab) {
     case 'week':
-      return <WeekScreen />;
+      return <WeekScreen onNavigate={setTab} />;
     case 'shop':
       return <ShopScreen />;
     case 'search':
@@ -98,7 +98,7 @@ function Shell() {
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.22, ease: 'easeOut' }}
         >
-          {renderTab(tab)}
+          {renderTab(tab, setTab)}
         </motion.main>
       </AnimatePresence>
       <BottomNav active={tab} onChange={setTab} />

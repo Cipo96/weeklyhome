@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Navigation,
   Newspaper,
+  Share,
 } from 'lucide-react';
 import {
   optimizeCheapest,
@@ -137,6 +138,54 @@ function Loaded({
       return next;
     });
 
+  const handleShare = async () => {
+    const byStore = new Map<string, { name: string; qty: string }[]>();
+    const unavailable: { name: string; qty: string }[] = [];
+
+    for (const row of shopping.list) {
+      const food = foodMeta(row.foodId, row.name);
+      const assigned = assignmentByFood.get(row.foodId);
+      const q = qty(row.quantity);
+      if (assigned && activeIds.has(assigned.storeId)) {
+        const list = byStore.get(assigned.storeId) ?? [];
+        list.push({ name: food.name, qty: q });
+        byStore.set(assigned.storeId, list);
+      } else {
+        unavailable.push({ name: food.name, qty: q });
+      }
+    }
+
+    let text = '🛒 *Spesa della Settimana*\n\n';
+
+    for (const [storeId, items] of byStore.entries()) {
+      const storeName = storeById.get(storeId)?.name ?? 'Sconosciuto';
+      text += `📍 *${storeName}*\n`;
+      for (const item of items) {
+        text += `• ${item.qty} ${item.name}\n`;
+      }
+      text += '\n';
+    }
+
+    if (unavailable.length > 0) {
+      text += `❌ *Non disponibili*\n`;
+      for (const item of unavailable) {
+        text += `• ${item.qty} ${item.name}\n`;
+      }
+      text += '\n';
+    }
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        alert('Lista copiata negli appunti!');
+      }
+    } catch (e) {
+      // Ignora errori da annullamento condivisione
+    }
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-3 px-1">
@@ -258,6 +307,13 @@ function Loaded({
             ricontrolla grammi/pezzi nella revisione del piano.
           </p>
         )}
+
+        <button
+          onClick={() => void handleShare()}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-mint/20 px-4 py-3 text-sm font-semibold text-mint-900 transition-colors hover:bg-mint/30 active:scale-[0.99] dark:text-mint-400"
+        >
+          <Share className="size-4" /> Invia su WhatsApp
+        </button>
       </GlassCard>
 
       {shopping.stores.length > 0 && (

@@ -7,7 +7,7 @@ import { MEAL_LABELS, MEAL_EMOJI, DAY_LABELS_FULL } from '../lib/format';
 import type { ApiMeal, ApiPlan, ApiPlanItem } from '../api/types';
 import type { Unit } from '@weeklyhome/domain';
 
-const UNITS: Unit[] = ['g', 'kg', 'ml', 'l', 'pz'];
+const UNITS: Unit[] = ['g', 'kg', 'ml', 'l', 'pz', 'qb', 'cucchiaio', 'cucchiaino'];
 const TYPE_ORDER = ['BREAKFAST', 'MORNING_SNACK', 'SNACK', 'LUNCH', 'AFTERNOON_SNACK', 'DINNER'];
 
 export function ImportScreen() {
@@ -200,7 +200,9 @@ function MealCard({ meal }: { meal: ApiMeal }) {
 function FlatItems({ meal, optionIndex }: { meal: ApiMeal; optionIndex: number }) {
   const { addDraftItem } = useApp();
   const [adding, setAdding] = useState(false);
-  const items = meal.items.filter((it) => it.optionIndex === optionIndex);
+  const items = [...meal.items]
+    .filter((it) => it.optionIndex === optionIndex)
+    .sort((a, b) => a.id.localeCompare(b.id));
 
   return (
     <>
@@ -215,7 +217,6 @@ function FlatItems({ meal, optionIndex }: { meal: ApiMeal; optionIndex: number }
           <AddItemRow
             onAdd={async (b) => {
               await addDraftItem(meal.id, { ...b, optionIndex });
-              setAdding(false);
             }}
             onCancel={() => setAdding(false)}
           />
@@ -241,7 +242,9 @@ function OptionBlock({ meal, optionIndex }: { meal: ApiMeal; optionIndex: number
   const { addDraftItem, selectDraftOption } = useApp();
   const [adding, setAdding] = useState(false);
   const selected = meal.selectedOption === optionIndex;
-  const items = meal.items.filter((it) => it.optionIndex === optionIndex);
+  const items = [...meal.items]
+    .filter((it) => it.optionIndex === optionIndex)
+    .sort((a, b) => a.id.localeCompare(b.id));
   const label = items.find((it) => it.optionLabel)?.optionLabel ?? `Opzione ${optionIndex + 1}`;
 
   return (
@@ -284,7 +287,6 @@ function OptionBlock({ meal, optionIndex }: { meal: ApiMeal; optionIndex: number
               <AddItemRow
                 onAdd={async (b) => {
                   await addDraftItem(meal.id, { ...b, optionIndex });
-                  setAdding(false);
                 }}
                 onCancel={() => setAdding(false)}
               />
@@ -319,7 +321,7 @@ function ItemRow({ item }: { item: ApiPlanItem }) {
   };
   const commitValue = () => {
     const n = Number(value.replace(',', '.'));
-    if (Number.isFinite(n) && n > 0 && n !== item.value) void updateDraftItem(item.id, { value: n });
+    if (Number.isFinite(n) && n >= 0 && n !== item.value) void updateDraftItem(item.id, { value: n });
   };
   const commitUnit = (u: Unit) => {
     setUnit(u);
@@ -377,7 +379,15 @@ function AddItemRow({
 
   const submit = () => {
     const n = Number(value.replace(',', '.'));
-    if (name.trim() && Number.isFinite(n) && n > 0) void onAdd({ name: name.trim(), value: n, unit });
+    if (name.trim() && Number.isFinite(n) && n >= 0) {
+      void onAdd({ name: name.trim(), value: n, unit });
+      setName('');
+      setValue('100');
+    }
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') submit();
   };
 
   return (
@@ -386,12 +396,14 @@ function AddItemRow({
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
+        onKeyDown={onKeyDown}
         className="min-w-0 flex-1 bg-transparent px-1 text-sm text-fg outline-none placeholder:text-fg/30"
         placeholder="Nuovo alimento"
       />
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onKeyDown={onKeyDown}
         inputMode="decimal"
         className="w-12 rounded-lg bg-bg px-2 py-1 text-right text-sm text-fg outline-none"
       />
