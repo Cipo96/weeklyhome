@@ -74,6 +74,11 @@ export interface ProviderProduct {
 export function pricesFromProducts(products: ProviderProduct[], source: string): PriceRecord[] {
   const cheapest = new Map<string, ProviderProduct>();
   for (const p of products) {
+    // I prodotti fuori dal catalogo staple non servono all'ottimizzatore, che
+    // ragiona solo sugli alimenti del piano. Il filtro vive QUI e non nei
+    // provider: scartarli all'ingestione li cancellava anche dalla ricerca
+    // prodotti, che invece deve vedere tutto cio' che scrapiamo.
+    if (p.foodId.startsWith('x-')) continue;
     const key = `${p.foodId}|${p.storeId}`;
     const cur = cheapest.get(key);
     if (!cur || p.unitPrice < cur.unitPrice) cheapest.set(key, p);

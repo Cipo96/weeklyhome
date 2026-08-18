@@ -56,7 +56,8 @@ export class EurospinOffersProvider implements PriceProvider {
           const name = String(p.description ?? this.prop(p, 'TITLE') ?? '').trim();
           if (!name) continue;
           const foodId = catalogFoodId(name);
-          if (foodId.startsWith('x-')) continue;
+          // Fuori catalogo = utile alla ricerca, scartato dall'ottimizzatore
+          // in pricesFromProducts. Vedi lidl-offers per la stessa scelta.
           const product = this.product(p, foodId);
           if (product) products.push(product);
         }

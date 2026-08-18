@@ -30,6 +30,18 @@ interface LidlGrid {
   regionsPrices?: Record<string, { currentPrice?: LidlCurrentPrice }>;
 }
 
+/**
+ * Categorie alimentari nel `data-grid-data`. Lidl marca la frutta e verdura come
+ * "F+V", NON come "Food": confrontare con la sola stringa 'Food' escludeva il
+ * 100% dell'ortofrutta, che quindi non e' mai finita in database.
+ */
+const LIDL_FOOD_CATEGORY = /^(food|f\+v)$/i;
+
+/** Esportata per i test: e' il predicato che ha escluso l'ortofrutta per mesi. */
+export function isLidlFoodCategory(category: string | undefined): boolean {
+  return !category || LIDL_FOOD_CATEGORY.test(category);
+}
+
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -120,14 +132,15 @@ export class LidlOffersProvider implements PriceProvider {
           } catch {
             continue;
           }
-          if (!o.havingPrice || (o.category && o.category !== 'Food')) continue;
+          if (!o.havingPrice || !isLidlFoodCategory(o.category)) continue;
           const cp = Object.values(o.regionsPrices ?? {})[0]?.currentPrice;
           if (!cp) continue;
           if (cp.endDate && Date.parse(cp.endDate) < now) continue; // offerta scaduta
           const name = (o.title ?? o.fullTitle ?? '').trim();
           if (!name) continue;
+          // Niente filtro sul catalogo staple: i prodotti fuori catalogo servono
+          // alla ricerca prodotti. L'ottimizzatore li scarta in pricesFromProducts.
           const foodId = catalogFoodId(name);
-          if (foodId.startsWith('x-')) continue; // non nel nostro catalogo (o piatto/derivato)
           const pack = lidlPack(cp);
           if (pack == null) continue;
           products.push({
