@@ -196,19 +196,33 @@ export class PriceService implements OnModuleInit {
 
   /**
    * Refresh schedulato settimanale delle offerte volantino (Conad + Todis): la
-   * vision AI è costosa e i volantini cambiano ~settimanalmente. Giovedì mattina,
-   * quando i volantini Conad di metà settimana sono già usciti. Salta senza chiave AI.
+   * vision AI è costosa e i volantini cambiano ~settimanalmente. Lunedì mattina,
+   * quando escono i volantini nuovi, con un secondo giro il giovedì che recupera
+   * un lunedì fallito e prende i volantini Conad di metà settimana. Il giovedì
+   * non costa quota: con force=false trova i dati di lunedì ancora validi e salta.
    *
    * NB: è un fallback in-process — su Render free il processo può dormire all'orario
    * del cron, quindi la sorgente PRIMARIA è il trigger esterno (cron-job.org →
    * POST /cron/weekly). Con force=false le due strade non sprecano quota a vicenda:
    * la seconda trova i dati freschi e salta.
    */
-  @Cron('0 6 * * 4')
+  @Cron('0 6 * * 1,4')
   async scheduledVolantinoRefresh(): Promise<void> {
-    if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) return;
-    this.logger.log('Refresh volantini schedulato (giovedì)…');
-    await this.refreshAllVolantini(false);
+    if (!PriceService.hasAiKey()) {
+      // Prima causa storica di volantini fermi: nessuna chiave AI nelle env del
+      // deploy. Un return muto rendeva il guasto invisibile per settimane.
+      this.logger.warn(
+        'Refresh volantini saltato: nessuna GEMINI_API_KEY/ANTHROPIC_API_KEY configurata.',
+      );
+      return;
+    }
+    this.logger.log('Refresh volantini schedulato…');
+    const res = await this.refreshAllVolantini(false);
+    for (const [store, r] of Object.entries(res)) {
+      if (!r.ok) this.logger.error(`Volantino ${store}: FALLITO — ${r.error}`);
+      else if (r.skipped) this.logger.log(`Volantino ${store}: saltato (ancora valido).`);
+      else this.logger.log(`Volantino ${store}: aggiornato, ${r.matched} offerte agganciate.`);
+    }
   }
 
   /**
@@ -251,6 +265,96 @@ export class PriceService implements OnModuleInit {
         `Refresh volantini in background fallito: ${e instanceof Error ? e.message : e}`,
       ),
     );
+  }
+
+
+  /**
+   * Insegne coperte dal refresh vision settimanale. Le altre (Lidl, Eurospin,
+   * Oasi) arrivano da provider HTTP dentro `refresh()` e non hanno volantino.
+   */
+  static readonly VISION_STORES = ['conad', 'todis'] as const;
+
+  /**
+   * Durata oltre la quale un volantino e' considerato stantio: 14 giorni, non 7.
+   * Con force=false un volantino ancora valido viene saltato, quindi fetchedAt
+   * puo' legittimamente restare fermo per tutta la durata del volantino stesso:
+   * una soglia di 7 giorni darebbe falsi allarmi sui volantini quindicinali.
+   */
+  static readonly VOLANTINO_MAX_AGE_HOURS = 336;
+
+  /**
+   * Vero se almeno una chiave AI e' configurata. Senza chiave l'estrazione
+   * vision non parte: e' la prima cosa da controllare quando i volantini non
+   * si aggiornano da soli.
+   */
+  static hasAiKey(): boolean {
+    return Boolean(process.env.GEMINI_API_KEY ?? process.env.ANTHROPIC_API_KEY);
+  }
+
+  /**
+   * Fotografia della freschezza dei volantini, per gli scheduler esterni: dice
+   * se il refresh settimanale ha davvero prodotto qualcosa, cosa che
+   * `/cron/weekly` non puo' dire (risponde subito, prima che la vision parta).
+   *
+   * Non serve una tabella di esiti: `VolantinoProduct.fetchedAt` e' gia' la
+   * traccia di quando l'insegna e' stata estratta l'ultima volta.
+   */
+  async volantiniStatus(maxAgeHours = PriceService.VOLANTINO_MAX_AGE_HOURS): Promise<{
+    ok: boolean;
+    aiKeyConfigured: boolean;
+    checkedAt: string;
+    maxAgeHours: number;
+    stores: {
+      storeId: string;
+      lastFetchedAt: string | null;
+      ageHours: number | null;
+      activeOffers: number;
+      fresh: boolean;
+    }[];
+  }> {
+    const now = new Date();
+    const storeIds = [...PriceService.VISION_STORES];
+
+    const lastFetch = await this.prisma.volantinoProduct.groupBy({
+      by: ['storeId'],
+      where: { storeId: { in: storeIds } },
+      _max: { fetchedAt: true },
+    });
+    const activeCounts = await this.prisma.volantinoProduct.groupBy({
+      by: ['storeId'],
+      where: {
+        storeId: { in: storeIds },
+        OR: [{ validTo: null }, { validTo: { gt: now } }],
+      },
+      _count: { _all: true },
+    });
+
+    const lastById = new Map(lastFetch.map((r) => [r.storeId, r._max.fetchedAt]));
+    const activeById = new Map(activeCounts.map((r) => [r.storeId, r._count._all]));
+
+    const stores = storeIds.map((storeId) => {
+      const last = lastById.get(storeId) ?? null;
+      const ageHours =
+        last === null ? null : Math.round(((now.getTime() - last.getTime()) / 3_600_000) * 10) / 10;
+      const activeOffers = activeById.get(storeId) ?? 0;
+      // Fresco = estratto di recente E con offerte ancora valide: un'estrazione
+      // recente che non ha prodotto nulla di valido e' comunque un fallimento.
+      return {
+        storeId,
+        lastFetchedAt: last?.toISOString() ?? null,
+        ageHours,
+        activeOffers,
+        fresh: ageHours !== null && ageHours <= maxAgeHours && activeOffers > 0,
+      };
+    });
+
+    return {
+      ok: stores.every((s) => s.fresh),
+      aiKeyConfigured: PriceService.hasAiKey(),
+      checkedAt: now.toISOString(),
+      maxAgeHours,
+      stores,
+    };
   }
 
   /**

@@ -1,0 +1,115 @@
+name: Refresh volantini
+
+# Scheduler PRIMARIO dei volantini. L'API gira su Render (il frontend su Vercel
+# e' statico), e il @Cron in-process di NestJS e' solo una rete di sicurezza:
+# se il processo riparte o dorme all'orario giusto, quel giro salta in silenzio.
+# Qui invece l'esito e' visibile — se fallisce, GitHub manda una mail.
+#
+# Perche' due giorni: i volantini nuovi escono il lunedi'. Il giro del giovedi'
+# recupera un lunedi' fallito e prende i volantini Conad di meta' settimana, e
+# non costa quota Gemini: con force=false trova i dati di lunedi' ancora validi
+# e salta l'estrazione.
+#
+# Nota: il cron di GitHub e' in UTC e ignora l'ora legale, quindi le 06:00 UTC
+# sono le 08:00 in estate e le 07:00 in inverno. Va bene: serve solo che sia
+# dopo la pubblicazione mattutina del volantino.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # lunedi' — volantini nuovi
+    - cron: '0 6 * * 4' # giovedi' — recupero + Conad meta' settimana
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Riestrai anche i volantini ancora validi (consuma quota AI)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: refresh-volantini
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Non e' un segreto: l'URL e' gia' visibile nel bundle JS pubblicato.
+      API_BASE_URL: https://weeklyhome.onrender.com/api
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      FORCE: ${{ inputs.force && 'true' || 'false' }}
+
+    steps:
+      - name: Verifica che il segreto sia configurato
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Manca il secret CRON_SECRET nel repo (Settings → Secrets → Actions)."
+            echo "Deve valere esattamente come la env CRON_SECRET su Render."
+            exit 1
+          fi
+
+      - name: Sveglia l'API
+        # Render puo' avere l'istanza addormentata: il primo colpo paga il cold
+        # start, che supera abbondantemente il timeout di default di curl.
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' "$API_BASE_URL/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "API sveglia dopo $i tentativo/i."
+              exit 0
+            fi
+            echo "Tentativo $i: health ha risposto $code, riprovo tra 15s…"
+            sleep 15
+          done
+          echo "::error::L'API non risponde su $API_BASE_URL/health dopo 10 tentativi."
+          exit 1
+
+      - name: Controlla che le chiavi AI siano configurate su Render
+        # Fallire qui, subito e con un messaggio chiaro, invece di aspettare 20
+        # minuti un refresh che non sarebbe mai potuto partire.
+        run: |
+          body=$(curl -s -m 60 -H "x-cron-token: $CRON_SECRET" "$API_BASE_URL/cron/status")
+          code=$(curl -s -m 60 -o /dev/null -w '%{http_code}' -H "x-cron-token: $CRON_SECRET" "$API_BASE_URL/cron/status")
+          case "$code" in
+            503) echo "::error::CRON_SECRET non e' configurato nelle env di Render."; exit 1 ;;
+            403) echo "::error::Il CRON_SECRET di GitHub non coincide con quello di Render."; exit 1 ;;
+            200) : ;;
+            *)   echo "::error::/cron/status ha risposto $code."; exit 1 ;;
+          esac
+          echo "$body" | jq .
+          if [ "$(echo "$body" | jq -r '.aiKeyConfigured')" != "true" ]; then
+            echo "::error::Nessuna GEMINI_API_KEY/ANTHROPIC_API_KEY nelle env di Render: la vision non puo' partire."
+            exit 1
+          fi
+
+      - name: Avvia il refresh
+        run: |
+          code=$(curl -s -m 120 -o /tmp/weekly.json -w '%{http_code}' \
+            -X POST -H "x-cron-token: $CRON_SECRET" \
+            "$API_BASE_URL/cron/weekly?force=$FORCE")
+          if [ "$code" != "201" ] && [ "$code" != "200" ]; then
+            echo "::error::/cron/weekly ha risposto $code: $(cat /tmp/weekly.json)"
+            exit 1
+          fi
+          echo "Refresh avviato (force=$FORCE): $(cat /tmp/weekly.json)"
+
+      - name: Attendi l'esito
+        # /cron/weekly e' fire-and-forget: risponde prima che la vision parta,
+        # quindi il suo 200 non dice nulla. La verita' sta in /cron/status.
+        # Il polling tiene anche sveglia l'istanza Render durante l'estrazione.
+        run: |
+          for i in $(seq 1 20); do
+            body=$(curl -s -m 60 -H "x-cron-token: $CRON_SECRET" "$API_BASE_URL/cron/status")
+            if [ "$(echo "$body" | jq -r '.ok')" = "true" ]; then
+              echo "Volantini aggiornati."
+              echo "$body" | jq -r '.stores[] | "  \(.storeId): \(.activeOffers) offerte attive, estratto \(.ageHours)h fa"'
+              exit 0
+            fi
+            echo "Giro $i/20 — non ancora pronto:"
+            echo "$body" | jq -c '.stores'
+            sleep 60
+          done
+          echo "::error::I volantini non risultano aggiornati dopo 20 minuti."
+          echo "$body" | jq .
+          echo "Controlla i log del servizio su Render per l'errore di estrazione."
+          exit 1

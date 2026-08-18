@@ -57,7 +57,8 @@ Le rotte sopra (eccetto auth) richiedono header `Authorization: Bearer <token>`.
 
 **Endpoint pubblici (no JWT):**
 - `GET /health` — keep-alive/health-check
-- `POST /cron/weekly` — refresh settimanale "di tutto" (base HTTP + volantini vision) innescato da uno scheduler esterno; protetto da `CRON_SECRET` via header `x-cron-token` o query `?token=`
+- `POST /cron/weekly` — refresh settimanale "di tutto" (base HTTP + volantini vision) innescato da uno scheduler esterno; protetto da `CRON_SECRET` via header `x-cron-token` o query `?token=`. Accetta `?force=true` per riestrarre anche i volantini ancora validi
+- `GET /cron/status` — freschezza dei volantini (per insegna: ultima estrazione, offerte attive, `fresh`) più `aiKeyConfigured`; stessa protezione `CRON_SECRET`. Serve allo scheduler per verificare l'esito, che `POST /cron/weekly` non può dare (risponde prima che la vision parta)
 
 ### Variabili d'ambiente (`apps/api/.env`)
 - `DATABASE_URL` — SQLite (default `file:./dev.db`)
@@ -83,12 +84,53 @@ curl -X POST "http://localhost:3000/api/prices/volantino?storeId=conad" \
 Poi `GET /shopping?...` userà quei prezzi reali.
 
 ### Aggiornamento automatico (cron)
-Due `@Cron` in-process (`@nestjs/schedule`): prezzi base ogni giorno alle **6:00**, volantini vision ogni **giovedì alle 6:00**. Su Render free il processo dorme dopo 15 min → il `@Cron` può non scattare all'orario. Perciò lo scheduling **primario è esterno** (cron-job.org, gratis):
 
-1. **Keep-alive** — `GET https://weeklyhome.onrender.com/api/health` ogni ~10 min (tiene sveglio Render).
-2. **Refresh settimanale** — `POST https://weeklyhome.onrender.com/api/cron/weekly` una volta a settimana (es. giovedì 06:00), con header `x-cron-token: <CRON_SECRET>`. Fa il refresh base + avvia i volantini vision. È `non-force`: se un volantino è ancora valido salta l'estrazione (risparmio quota Gemini).
+I volantini si aggiornano da soli, senza intervento manuale. Il deploy è diviso:
+**frontend statico su Vercel** (`weeklyhome.vercel.app`), **API NestJS su Render**
+(`weeklyhome.onrender.com/api`) — è a Render che punta lo scheduler.
 
-Imposta `CRON_SECRET` (stringa lunga e casuale) nelle env di Render e nel job cron-job.org. Dalla UI, il pulsante **«Aggiorna volantini»** in ShopScreen fa lo stesso refresh vision a mano.
+**Scheduler primario — GitHub Actions** (`.github/workflows/volantini.yml`)
+
+Gira **lunedì e giovedì alle 06:00 UTC** (08:00 in estate, 07:00 in inverno: il
+cron di GitHub ignora l'ora legale). Lunedì perché è il giorno in cui escono i
+volantini nuovi; giovedì per recuperare un lunedì fallito e prendere i volantini
+Conad di metà settimana — e non costa quota AI, perché con `force=false` trova i
+dati di lunedì ancora validi e salta l'estrazione.
+
+Il workflow fa quattro cose, in ordine: sveglia l'API (fino a 10 tentativi, copre
+il cold start di Render) → verifica che le chiavi siano configurate → chiama
+`POST /cron/weekly` → **fa polling di `GET /cron/status` fino a 20 minuti** finché
+i volantini non risultano freschi. Se non lo diventano, il job fallisce e GitHub
+manda una mail: è questo che rende un guasto visibile invece che silenzioso.
+
+Si può lanciare a mano da GitHub → Actions → *Refresh volantini* → *Run workflow*,
+con la spunta `force` per riestrarre anche i volantini ancora validi.
+
+**Rete di sicurezza — `@Cron` in-process** (`@nestjs/schedule`)
+
+Prezzi base ogni giorno alle 6:00; volantini vision lunedì e giovedì alle 6:00,
+in parallelo al workflow. Non si pestano i piedi: con `force=false` il secondo
+arrivato trova i dati freschi e salta. Se mancano le chiavi AI ora lo scrive nei
+log invece di uscire in silenzio.
+
+**Configurazione necessaria**
+
+| Dove | Variabile | Valore |
+|---|---|---|
+| Render → Environment | `CRON_SECRET` | stringa lunga e casuale |
+| Render → Environment | `GEMINI_API_KEY` (o `ANTHROPIC_API_KEY`) | senza questa la vision non parte |
+| GitHub → Settings → Secrets → Actions | `CRON_SECRET` | **lo stesso identico valore** di Render |
+
+L'URL dell'API non è un secret (è già pubblico nel bundle JS) ed è scritto come
+`env` nel workflow. Per diagnosticare: `curl -H "x-cron-token: <CRON_SECRET>"
+https://weeklyhome.onrender.com/api/cron/status` dice subito se le chiavi ci sono
+e quanto sono vecchi i volantini.
+
+Nota: GitHub sospende gli workflow schedulati dopo 60 giorni senza attività sul
+repo (avvisa per mail prima di farlo).
+
+Dalla UI, il pulsante **«Aggiorna volantini»** in ShopScreen fa lo stesso refresh
+vision a mano, se serve un aggiornamento fuori orario.
 
 ### App completa (frontend collegato all'API)
 Avvia entrambi (due terminali):

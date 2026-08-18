@@ -1,6 +1,7 @@
 import {
   Controller,
   ForbiddenException,
+  Get,
   Headers,
   Post,
   Query,
@@ -42,12 +43,33 @@ export class CronController {
   async weekly(
     @Headers('x-cron-token') headerToken?: string,
     @Query('token') queryToken?: string,
-  ): Promise<{ started: boolean }> {
+    @Query('force') force?: string,
+  ): Promise<{ started: boolean; force: boolean }> {
     this.assertToken(headerToken ?? queryToken);
     // Il refresh base è veloce: lo aspettiamo così l'esito va nei log dello scheduler.
     await this.price.refresh().catch(() => undefined);
-    // La vision è lenta (minuti): avvio in background, non-force (rispetta validità).
-    this.price.startVolantiniRefresh(false);
-    return { started: true };
+    // La vision è lenta (minuti): avvio in background. Di norma non-force, così
+    // rispetta la validità e non spreca quota; force=true serve al rilancio
+    // manuale quando si sospetta un'estrazione andata male ma non scaduta.
+    const forced = force === 'true';
+    this.price.startVolantiniRefresh(forced);
+    return { started: true, force: forced };
+  }
+
+  /**
+   * Esito del refresh, per lo scheduler che ha chiamato /cron/weekly. Serve
+   * perché quella POST è fire-and-forget: risponde `started` prima ancora che
+   * la vision parta, quindi da sola non distingue un successo da un disastro.
+   * Lo scheduler fa polling qui finché `ok` diventa true (o scade il timeout).
+   *
+   * `aiKeyConfigured` è solo un booleano — la chiave non esce mai da qui.
+   */
+  @Get('status')
+  async status(
+    @Headers('x-cron-token') headerToken?: string,
+    @Query('token') queryToken?: string,
+  ) {
+    this.assertToken(headerToken ?? queryToken);
+    return this.price.volantiniStatus();
   }
 }
