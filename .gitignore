@@ -28,3 +28,13 @@ Thumbs.db
 .vercel/
 .turbo/
 .eq-tipo/
+
+# PromptOps context snapshot
+.promptops/
+
+# PromptOps session assets
+.promptops-assets/
+
+# Artefatti generati dagli assistenti CLI
+.antigravity/
+GEMINI.md
