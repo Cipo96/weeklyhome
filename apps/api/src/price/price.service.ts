@@ -37,6 +37,18 @@ import { CategoryService } from '../category/category.service.js';
 import { productMatchesPlanRow } from './offer-match.js';
 
 const FRESHNESS_MS = 7 * 24 * 60 * 60 * 1000; // i prezzi valgono 7 giorni
+
+/**
+ * Margine di sicurezza della guardia anti-spreco: si salta l'estrazione solo se
+ * le offerte reggono ancora per almeno due giorni.
+ *
+ * Senza margine bastava che scadessero pochi minuti dopo l'avvio del cron perche'
+ * la guardia dicesse "ancora valide", saltasse, e lasciasse l'insegna a zero
+ * offerte fino al giro successivo — cioe' per tutta la settimana. Il costo di
+ * riestrarre un po' in anticipo e' qualche chiamata AI; il costo di saltare a
+ * sproposito e' una settimana senza prezzi ne' risultati di ricerca.
+ */
+const VOLANTINO_SKIP_MARGIN_MS = 2 * 24 * 60 * 60 * 1000;
 const VOLANTINO_SOURCE_PREFIX = 'volantino:';
 /** Pagine max per volantino da inviare alla vision (controllo costo/quota). */
 const MAX_VOLANTINO_PAGES = 30;
@@ -442,7 +454,8 @@ export class PriceService implements OnModuleInit {
       where: {
         storeId,
         source: { startsWith: VOLANTINO_SOURCE_PREFIX },
-        validTo: { gt: new Date() },
+        // Non basta "ancora valide adesso": devono reggere fino al prossimo giro.
+        validTo: { gt: new Date(Date.now() + VOLANTINO_SKIP_MARGIN_MS) },
       },
     });
     return count > 0;
@@ -588,7 +601,14 @@ export class PriceService implements OnModuleInit {
       { data: pdf, mediaType: 'application/pdf' },
     ]);
 
-    const validTo = Date.now() + FRESHNESS_MS;
+    // Todis non pubblica le date di validita' nei metadati (Conad si', via Yumpu),
+    // quindi la finestra e' sintetica. Ancorata alla mezzanotte UTC del giorno di
+    // estrazione e non a "adesso": contando dall'istante esatto, la scadenza
+    // cadeva ogni volta pochi minuti dopo l'orario del cron della settimana dopo,
+    // finendo in fase con esso.
+    const midnight = new Date();
+    midnight.setUTCHours(0, 0, 0, 0);
+    const validTo = midnight.getTime() + FRESHNESS_MS;
     const source = `${VOLANTINO_SOURCE_PREFIX}${storeId}`;
     const best = new Map<string, { unitPrice: number; validTo: number }>();
     for (const p of products) {

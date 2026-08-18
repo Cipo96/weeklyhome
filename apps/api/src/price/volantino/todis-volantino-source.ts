@@ -15,6 +15,40 @@ export const TODIS_DEFAULT_REGION = /abruzzo/i;
  */
 const TODIS_SPECIALTY = /pescheria|macelleria|gastronomia|enoteca|panetteria|ortofrutta/i;
 
+/**
+ * Volantini NON settimanali. "Bassi e Bloccati" e' il listino a prezzi bloccati:
+ * un catalogo di lungo periodo che Todis ritocca di continuo, quindi ordinando
+ * per `modified_gmt` vince quasi sempre sul volantino settimanale delle offerte
+ * — che e' invece quello che ci serve. Stesso problema di TODIS_SPECIALTY, altra
+ * forma: il post piu' recente non e' il volantino piu' pertinente.
+ */
+const TODIS_NON_SETTIMANALE = /bassi\s*e\s*bloccati|prezzi\s*bloccati|sempre\s*bassi/i;
+
+/** Titolo leggibile di un post volantino (WP lo restituisce con markup). */
+export function volantinoTitle(post: WpVolantino): string {
+  return (post.title?.rendered ?? '').replace(/<[^>]+>/g, '').trim();
+}
+
+/**
+ * Sceglie il volantino settimanale della regione fra i post WP. Pura di
+ * proposito: e' la logica che decide QUALE documento paghiamo di estrazione AI,
+ * e va testabile senza toccare la rete.
+ */
+export function selectTodisVolantino(
+  posts: WpVolantino[],
+  region: RegExp = TODIS_DEFAULT_REGION,
+): WpVolantino | null {
+  const candidates = posts
+    .filter((p) => {
+      const title = volantinoTitle(p);
+      return (
+        region.test(title) && !TODIS_SPECIALTY.test(title) && !TODIS_NON_SETTIMANALE.test(title)
+      );
+    })
+    .sort((a, b) => Date.parse(b.modified_gmt ?? '') - Date.parse(a.modified_gmt ?? ''));
+  return candidates[0] ?? null;
+}
+
 export interface TodisVolantino {
   id: number;
   title: string;
@@ -22,7 +56,7 @@ export interface TodisVolantino {
   modified: number;
 }
 
-interface WpVolantino {
+export interface WpVolantino {
   id: number;
   modified_gmt?: string;
   title?: { rendered?: string };
@@ -45,19 +79,13 @@ export async function discoverTodisVolantino(
   if (!res.ok) throw new Error(`Todis volantini: HTTP ${res.status}`);
   const posts = (await res.json()) as WpVolantino[];
 
-  const candidates = posts
-    .filter((p) => {
-      const title = (p.title?.rendered ?? '').replace(/<[^>]+>/g, '');
-      return region.test(title) && !TODIS_SPECIALTY.test(title);
-    })
-    .sort((a, b) => Date.parse(b.modified_gmt ?? '') - Date.parse(a.modified_gmt ?? ''));
-  if (candidates.length === 0) {
-    logger.warn(`Nessun volantino Todis per la regione ${region}.`);
+  const post = selectTodisVolantino(posts, region);
+  if (!post) {
+    logger.warn(`Nessun volantino Todis settimanale per la regione ${region}.`);
     return null;
   }
 
-  const post = candidates[0]!;
-  const title = (post.title?.rendered ?? '').replace(/<[^>]+>/g, '').trim();
+  const title = volantinoTitle(post);
   const pdfUrl = post.link ? await extractPdfUrl(post.link) : null;
   if (!pdfUrl) {
     logger.warn(`Volantino Todis "${title}" senza PDF individuabile.`);
