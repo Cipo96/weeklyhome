@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isLidlFoodCategory } from './catalog/lidl-offers.js';
+import { isLidlFoodCategory, lidlPack } from './catalog/lidl-offers.js';
 import { pricesFromProducts, type ProviderProduct } from './price-data.js';
 
 /**
@@ -88,4 +88,50 @@ test('ottimizzatore: fra due staple uguali vince il piu’ conveniente', () => {
 
 test('ottimizzatore: solo fuori catalogo → nessuna riga, nessun crash', () => {
   assert.deepEqual(pricesFromProducts([prod('x-bagel', 'Bagel', 2.1)], 'lidl-offers'), []);
+});
+
+// --- quantita' della confezione ----------------------------------------------
+
+test('confezione: "Al kg" — lo sfuso a peso ha gia’ il prezzo unitario', () => {
+  // L'ortofrutta venduta a peso non porta una quantita' nel testo: il parsing
+  // numerico falliva e il prodotto spariva. E' il caso dell'anguria.
+  assert.deepEqual(lidlPack({ price: 1.09, packaging: { text: 'Al kg' } }), {
+    unitPrice: 1.09,
+    baseUnit: 'kg',
+  });
+});
+
+test('confezione: "Al pezzo" e "Alla confezione" → unita’ a pezzi', () => {
+  assert.equal(lidlPack({ price: 2.5, packaging: { text: 'Al pezzo' } })?.baseUnit, 'pz');
+  assert.equal(lidlPack({ price: 2.5, packaging: { text: 'Alla confezione' } })?.baseUnit, 'pz');
+});
+
+test('confezione: "Al litro" → unita’ a volume', () => {
+  assert.equal(lidlPack({ price: 1.2, packaging: { text: 'Al litro' } })?.baseUnit, 'l');
+});
+
+test('confezione: la quantita’ numerica ha la precedenza sullo sfuso', () => {
+  // "2 kg confezione" a 1.99 fa 1.00 €/kg: il ramo sfuso non deve intercettarlo
+  // e restituire 1.99, che sarebbe il prezzo della confezione intera.
+  assert.deepEqual(lidlPack({ price: 1.99, packaging: { text: '2 kg confezione' } }), {
+    unitPrice: 1,
+    baseUnit: 'kg',
+  });
+});
+
+test('confezione: basePrice di Lidl resta la fonte preferita', () => {
+  assert.deepEqual(
+    lidlPack({
+      price: 1.99,
+      basePrice: { text: '1 kg = 1.00 €' },
+      packaging: { text: '2 kg confezione' },
+    }),
+    { unitPrice: 1, baseUnit: 'kg' },
+  );
+});
+
+test('confezione: testo non interpretabile → null, nessun prezzo inventato', () => {
+  assert.equal(lidlPack({ price: 1.99, packaging: { text: 'confezione' } }), null);
+  assert.equal(lidlPack({ price: 1.99 }), null);
+  assert.equal(lidlPack({ packaging: { text: 'Al kg' } }), null);
 });

@@ -57,7 +57,18 @@ function decodeEntities(s: string): string {
  * €/kg | €/l | €/pz per un prodotto Lidl, da basePrice (pronto) o da
  * prezzo+confezione, con l'unità di riferimento. null se non normalizzabile.
  */
-function lidlPack(cp: LidlCurrentPrice): { unitPrice: number; baseUnit: 'kg' | 'l' | 'pz' } | null {
+/**
+ * Confezioni "sfuse": l'ortofrutta venduta a peso non porta una quantita' nel
+ * testo ("Al kg"), quindi il parsing numerico falliva e il prodotto veniva
+ * scartato — sparendo anche dalla ricerca. In questi casi il prezzo esposto E'
+ * gia' quello unitario, quindi non c'e' nulla da dividere.
+ */
+const LIDL_SFUSO = /\bal(?:la)?\s+(kg|chilo|kilo|litro|l|pezzo|pz|confezione)\b/i;
+
+export function lidlPack(cp: LidlCurrentPrice): {
+  unitPrice: number;
+  baseUnit: 'kg' | 'l' | 'pz';
+} | null {
   if (!(typeof cp.price === 'number' && cp.price > 0)) return null;
 
   // 1) basePrice già calcolato da Lidl: "1 kg = 27.38 €" / "1 l = 5.00 €"
@@ -99,6 +110,14 @@ function lidlPack(cp: LidlCurrentPrice): { unitPrice: number; baseUnit: 'kg' | '
     if (pieces) {
       const n = Number(pieces[1]);
       if (n > 0) return { unitPrice: round2(cp.price / n), baseUnit: 'pz' };
+    }
+
+    // 3) sfuso a peso/volume/pezzo: il prezzo mostrato e' gia' quello unitario.
+    const sfuso = pack.match(LIDL_SFUSO);
+    if (sfuso) {
+      const u = sfuso[1].toLowerCase();
+      const baseUnit = u === 'l' || u === 'litro' ? 'l' : u.startsWith('k') || u === 'chilo' ? 'kg' : 'pz';
+      return { unitPrice: round2(cp.price), baseUnit };
     }
   }
   return null;
