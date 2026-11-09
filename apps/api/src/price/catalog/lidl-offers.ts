@@ -14,7 +14,7 @@ const BASE = 'https://www.lidl.it';
  * casa, giocattoli — vengono ignorate). Il filtro categoria "Food" sul singolo
  * prodotto resta comunque la rete di sicurezza. */
 const FOOD_SLUG =
-  /frutta-e-verdura|carne-e-pesce|super-offerte|inflazione-zero|italiamo|mega-offerte|food-festival|grandi-marche|el-tequito|latticini|colazione|dispensa|bevande|surgelat|pane|dolc/i;
+  /frutta-e-verdura|carne-e-pesce|super-offerte|inflazione-zero|italiamo|mega-offerte|food-festival|grandi-marche|el-tequito|latticini|colazione|dispensa|bevande|surgelat|pane|dolc|sottocosto|deluxe|favorina/i;
 
 interface LidlCurrentPrice {
   price?: number;
@@ -185,7 +185,7 @@ export class LidlOffersProvider implements PriceProvider {
   private async discoverFoodPages(): Promise<string[]> {
     const html = await this.get(HOME);
     const all = new Set<string>();
-    for (const m of html.matchAll(/\/c\/[a-z0-9-]+-kw-\d+-\d+\/[as]\d+/gi)) {
+    for (const m of html.matchAll(/\/c\/(?:store\/)?[a-z0-9-]+-kw-\d+-\d+\/[as]\d+/gi)) {
       if (FOOD_SLUG.test(m[0])) all.add(m[0]);
     }
     return [...all];

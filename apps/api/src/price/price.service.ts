@@ -496,29 +496,53 @@ export class PriceService implements OnModuleInit {
     for (const ref of active) {
       if (quotaExhausted) break;
       try {
-        const doc = await fetchYumpuDoc(ref.yumpuId);
-        const pages = await downloadYumpuPages(doc, MAX_VOLANTINO_PAGES);
-        if (pages.length === 0) continue;
-        // estrazione a blocchi: payload più piccoli, più robusti a 503/timeout.
-        // Ogni blocco è ISOLATO: se un chunk fallisce (503/quota) i prodotti dei
-        // blocchi già riusciti — e già pagati in quota — non vengono scartati.
         const products: ExtractedProduct[] = [];
-        for (let i = 0; i < pages.length; i += VOLANTINO_PAGE_CHUNK) {
-          const chunk = pages.slice(i, i + VOLANTINO_PAGE_CHUNK);
+        if (ref.pdfUrl) {
           try {
-            products.push(...(await this.extractWithRetry(extractor, chunk)));
+            const pdf = await downloadPdf(ref.pdfUrl);
+            products.push(
+              ...(await this.extractWithRetry(extractor, [
+                { data: pdf, mediaType: 'application/pdf' },
+              ])),
+            );
           } catch (e) {
             this.logger.warn(
-              `Volantino "${ref.title}" blocco pagine ${i + 1}-${i + chunk.length} fallito: ${
-                e instanceof Error ? e.message : e
-              }`,
+              `Volantino Conad PDF "${ref.title}" fallito: ${e instanceof Error ? e.message : e}`,
             );
-            // Quota giornaliera esaurita: ogni chiamata successiva darebbe 429.
-            // Interrompo subito (i parziali già estratti restano e vengono salvati).
             if (isDailyQuotaError(e)) {
-              this.logger.warn('Quota giornaliera Gemini esaurita: interrompo il refresh volantino Conad.');
+              this.logger.warn(
+                'Quota giornaliera Gemini esaurita: interrompo il refresh volantino Conad.',
+              );
               quotaExhausted = true;
               break;
+            }
+          }
+        } else if (ref.yumpuId) {
+          const doc = await fetchYumpuDoc(ref.yumpuId);
+          const pages = await downloadYumpuPages(doc, MAX_VOLANTINO_PAGES);
+          if (pages.length === 0) continue;
+          // estrazione a blocchi: payload più piccoli, più robusti a 503/timeout.
+          // Ogni blocco è ISOLATO: se un chunk fallisce (503/quota) i prodotti dei
+          // blocchi già riusciti — e già pagati in quota — non vengono scartati.
+          for (let i = 0; i < pages.length; i += VOLANTINO_PAGE_CHUNK) {
+            const chunk = pages.slice(i, i + VOLANTINO_PAGE_CHUNK);
+            try {
+              products.push(...(await this.extractWithRetry(extractor, chunk)));
+            } catch (e) {
+              this.logger.warn(
+                `Volantino "${ref.title}" blocco pagine ${i + 1}-${i + chunk.length} fallito: ${
+                  e instanceof Error ? e.message : e
+                }`,
+              );
+              // Quota giornaliera esaurita: ogni chiamata successiva darebbe 429.
+              // Interrompo subito (i parziali già estratti restano e vengono salvati).
+              if (isDailyQuotaError(e)) {
+                this.logger.warn(
+                  'Quota giornaliera Gemini esaurita: interrompo il refresh volantino Conad.',
+                );
+                quotaExhausted = true;
+                break;
+              }
             }
           }
         }
