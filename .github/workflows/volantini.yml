@@ -32,6 +32,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    environment: Production
     timeout-minutes: 30
     env:
       # Non e' un segreto: l'URL e' gia' visibile nel bundle JS pubblicato.
