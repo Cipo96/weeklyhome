@@ -57,6 +57,29 @@ test('token: assente del tutto viene rifiutato anche se il segreto esiste', asyn
   );
 });
 
+test('weekly: risponde immediatamente con started: true e avvia in background', async () => {
+  let refreshCalled = false;
+  let startVolantiniCalled = false;
+  const mockPrice = {
+    refresh: async () => {
+      refreshCalled = true;
+      return {} as never;
+    },
+    startVolantiniRefresh: () => {
+      startVolantiniCalled = true;
+    },
+  } as unknown as PriceService;
+
+  const ctrl = new CronController(mockPrice);
+  await withEnv({ CRON_SECRET: 'segreto-vero' }, async () => {
+    const res = await ctrl.weekly('segreto-vero', undefined, 'true');
+    assert.deepEqual(res, { started: true, force: true });
+    await new Promise((r) => setImmediate(r));
+    assert.equal(refreshCalled, true);
+    assert.equal(startVolantiniCalled, true);
+  });
+});
+
 // --- freschezza dei volantini -------------------------------------------------
 
 const HOUR = 3_600_000;

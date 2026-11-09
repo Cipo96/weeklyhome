@@ -46,13 +46,13 @@ export class CronController {
     @Query('force') force?: string,
   ): Promise<{ started: boolean; force: boolean }> {
     this.assertToken(headerToken ?? queryToken);
-    // Il refresh base è veloce: lo aspettiamo così l'esito va nei log dello scheduler.
-    await this.price.refresh().catch(() => undefined);
-    // La vision è lenta (minuti): avvio in background. Di norma non-force, così
-    // rispetta la validità e non spreca quota; force=true serve al rilancio
-    // manuale quando si sospetta un'estrazione andata male ma non scaduta.
     const forced = force === 'true';
-    this.price.startVolantiniRefresh(forced);
+    // Sia il refresh base che la vision girano in background (fire-and-forget):
+    // la risposta HTTP torna immediatamente per non superare i timeout del reverse proxy.
+    void (async () => {
+      await this.price.refresh().catch(() => undefined);
+      this.price.startVolantiniRefresh(forced);
+    })();
     return { started: true, force: forced };
   }
 
