@@ -11,7 +11,7 @@
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node --env-file=.env dist/main.js",
     "dev": "node --env-file=.env --watch dist/main.js",
-    "test": "tsc -p tsconfig.json && node --test \"dist/**/*.test.js\""
+    "test": "tsc -p tsconfig.json && node scripts/test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",
